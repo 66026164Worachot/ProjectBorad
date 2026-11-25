@@ -1,0 +1,3018 @@
+openapi: 3.0.3
+info:
+  title: ProjectBorad REST API
+  version: 1.0.0
+  description: |
+    เอกสารอธิบาย REST API ของระบบจองโต๊ะ ร้านอาหาร/บอร์ดเกม พร้อมการจัดการผู้ใช้ เมนู ออเดอร์ การจ่ายเงิน และแดชบอร์ดสรุปผล
+    
+    * Authentication ใช้ Bearer token (JWT) ที่ออกจาก `/api/auth/login`, `/api/auth/refresh` หรือ OAuth ของ Google
+    * ทุก response จะมีคีย์ `ok` ระบุสถานะของคำขอเสมอ หาก `ok=false` ให้ตรวจสอบฟิลด์ `error`
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: INVALID_CREDENTIALS
+            message:
+              type: string
+              example: Email or password is incorrect
+            details:
+              type: object
+              additionalProperties: true
+              nullable: true
+          required:
+            - code
+      required:
+        - ok
+        - error
+    MessageResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation completed successfully
+      required:
+        - ok
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 45
+        totalPages:
+          type: integer
+          example: 3
+    AuthTokens:
+      type: object
+      properties:
+        access:
+          type: string
+          description: JWT access token (อายุสั้น)
+        refresh:
+          type: string
+          description: JWT refresh token (อายุยาว)
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, staff, manager]
+        full_name:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    UserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    UserStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalStaff:
+          type: integer
+        totalManagers:
+          type: integer
+        newUsersThisMonth:
+          type: integer
+    MenuCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        display_order:
+          type: integer
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: string
+        category_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+        image_url:
+          type: string
+          nullable: true
+        is_available:
+          type: boolean
+        preparation_time:
+          type: integer
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+        display_order:
+          type: integer
+        stock_quantity:
+          type: integer
+        low_stock_threshold:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        category:
+          $ref: '#/components/schemas/MenuCategory'
+    MenuItemList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    FoodOrderItem:
+      type: object
+      properties:
+        menu_item_id:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          type: number
+          format: float
+        subtotal:
+          type: number
+          format: float
+        notes:
+          type: string
+          nullable: true
+    FoodOrder:
+      type: object
+      properties:
+        id:
+          type: string
+        booking_id:
+          type: string
+        order_number:
+          type: string
+        user_id:
+          type: string
+        table_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, served, completed, cancelled]
+        total_amount:
+          type: number
+          format: float
+        special_instructions:
+          type: string
+          nullable: true
+        confirmed_by:
+          type: string
+          nullable: true
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodOrderItem'
+    FoodOrderList:
+      type: object
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/FoodOrder'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        table_id:
+          type: string
+        booking_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+        end_time:
+          type: string
+        status:
+          type: string
+          enum: [waiting, approved, rejected, checked_in, checked_out, cancelled]
+        number_of_people:
+          type: integer
+          nullable: true
+        special_requests:
+          type: string
+          nullable: true
+        promotion_id:
+          type: string
+          nullable: true
+        payment_type:
+          type: string
+          enum: [advance, walk_in]
+        total_amount:
+          type: number
+          format: float
+          nullable: true
+        deposit_amount:
+          type: number
+          format: float
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    ReservationList:
+      type: object
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reservation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    Promotion:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        discount_type:
+          type: string
+          enum: [percentage, amount]
+        discount_value:
+          type: number
+          format: float
+        description:
+          type: string
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        max_uses:
+          type: integer
+          nullable: true
+        min_amount:
+          type: number
+          format: float
+          nullable: true
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+        booking_id:
+          type: string
+        user_id:
+          type: string
+        payment_type:
+          type: string
+          enum: [deposit, remaining, full_payment]
+        payment_method:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          format: float
+        payment_status:
+          type: string
+          enum: [pending, verified, rejected]
+        slip_image_url:
+          type: string
+          nullable: true
+        transaction_ref:
+          type: string
+          nullable: true
+        verified_by:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    PaymentList:
+      type: object
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PaymentStats:
+      type: object
+      properties:
+        totalPayments:
+          type: integer
+        totalAmount:
+          type: number
+          format: float
+        pendingPayments:
+          type: integer
+        verifiedPayments:
+          type: integer
+    DashboardStats:
+      type: object
+      properties:
+        period:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+        reservations:
+          type: object
+          additionalProperties: true
+        payments:
+          type: object
+          additionalProperties: true
+        menu:
+          type: object
+          additionalProperties: true
+    Boardgame:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        minPlayers:
+          type: integer
+          nullable: true
+        maxPlayers:
+          type: integer
+          nullable: true
+        playtimeMinutes:
+          type: integer
+          nullable: true
+        complexity:
+          type: string
+          enum: [easy, medium, hard]
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [available, unavailable, maintenance]
+        availableQuantity:
+          type: integer
+          nullable: true
+        isTrending:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+paths:
+  /api/auth/register:
+    post:
+      tags: [Authentication]
+      summary: ลงทะเบียนผู้ใช้ใหม่
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: ลงทะเบียนสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: อีเมลถูกใช้แล้ว
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: เข้าสู่ระบบด้วย email/password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: เข้าสู่ระบบสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  tokens:
+                    $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: ขอ access token ใหม่ด้วย refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: ออก access token ใหม่สำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  tokens:
+                    type: object
+                    properties:
+                      access:
+                        type: string
+        '400':
+          description: ไม่ส่ง refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: refresh token ไม่ถูกต้องหรือถูกเพิกถอน
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: เพิกถอน refresh token ปัจจุบัน
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: ออกจากระบบ (หรือ token ไม่ถูกพบ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /api/auth/reset/request:
+    post:
+      tags: [Authentication]
+      summary: ขอรหัสยืนยันรีเซ็ตรหัสผ่าน (รองรับเฉพาะ Gmail)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: ส่งอีเมลหรือให้ข้อความทั่วไปแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                  expiresIn:
+                    type: integer
+                    nullable: true
+        '400':
+          description: ข้อมูลไม่ถูกต้องหรืออีเมลไม่ได้ใช้ Gmail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/reset/confirm:
+    post:
+      tags: [Authentication]
+      summary: ยืนยันรหัสรีเซ็ตรหัสผ่านและตั้งรหัสใหม่
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, newPassword]
+              properties:
+                email:
+                  type: string
+                  format: email
+                code:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: เปลี่ยนรหัสผ่านสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: รหัสไม่ถูกต้องหรือหมดอายุ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/google:
+    get:
+      tags: [Authentication]
+      summary: Redirect ไป Google OAuth consent screen
+      responses:
+        '302':
+          description: Redirect ไปยัง Google
+  /api/auth/google/callback:
+    get:
+      tags: [Authentication]
+      summary: Callback จาก Google OAuth (redirect กลับ frontend พร้อมโทเคน)
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect กลับสู่หน้าเว็บพร้อม JWT
+  /api/protect/me/profile:
+    get:
+      tags: [Profile]
+      summary: ดูข้อมูลโปรไฟล์ของผู้ใช้ปัจจุบัน
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: ข้อมูลผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: ไม่ได้เข้าสู่ระบบหรือ token ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Profile]
+      summary: แก้ไขข้อมูลส่วนตัวของผู้ใช้ปัจจุบัน
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+      responses:
+        '200':
+          description: แก้ไขข้อมูลสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ผ่าน validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/protect/me/password:
+    put:
+      tags: [Profile]
+      summary: เปลี่ยนรหัสผ่านของผู้ใช้ปัจจุบัน
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: เปลี่ยนรหัสผ่านสำเร็จและเพิกถอน sessions อื่นๆ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: รหัสผ่านเดิมไม่ถูกต้องหรือรหัสใหม่สั้นเกินไป
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/protect/me/logout-others:
+    post:
+      tags: [Profile]
+      summary: เพิกถอน refresh token ทั้งหมด (ยกเว้นปัจจุบัน)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                currentRefreshToken:
+                  type: string
+                  description: ส่งมาเพื่อเก็บ session ปัจจุบันไว้ได้
+      responses:
+        '200':
+          description: ล็อกเอาต์ sessions อื่นสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: ข้อมูลไม่ครบหรือ refresh token ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/protect/me:
+    delete:
+      tags: [Profile]
+      summary: ลบบัญชีตัวเอง (ต้องยืนยันด้วยรหัสผ่าน)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '200':
+          description: ลบบัญชีสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: รหัสผ่านไม่ถูกต้องหรือบัญชีมีความสัมพันธ์กับข้อมูลอื่น
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/users:
+    get:
+      tags: [User Management]
+      summary: ดึงรายชื่อผู้ใช้ (Staff/Manager เท่านั้น)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [user, staff, manager]
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: รายชื่อผู้ใช้พร้อม pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/UserList'
+        '401':
+          description: ไม่ได้เข้าสู่ระบบหรือสิทธิ์ไม่พอ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [User Management]
+      summary: สร้างผู้ใช้ใหม่ (staff สร้างได้เฉพาะ user)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                full_name:
+                  type: string
+                  nullable: true
+                phone:
+                  type: string
+                  nullable: true
+                role:
+                  type: string
+                  enum: [user, staff, manager]
+      responses:
+        '201':
+          description: สร้างผู้ใช้สำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ครบหรือ password สั้นเกินไป
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: อีเมลถูกใช้แล้ว
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/users/stats:
+    get:
+      tags: [User Management]
+      summary: ดูสถิติผู้ใช้ทั้งหมด
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: สถิติผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/UserStats'
+        '401':
+          description: ไม่มีสิทธิ์
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/users/{id}:
+    get:
+      tags: [User Management]
+      summary: ดูข้อมูลผู้ใช้ตาม ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ข้อมูลผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+        '404':
+          description: ไม่พบผู้ใช้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [User Management]
+      summary: แก้ไขข้อมูลผู้ใช้ตาม ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  nullable: true
+                phone:
+                  type: string
+                  nullable: true
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [user, staff, manager]
+                password:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+        '400':
+          description: แก้ไขตัวเองหรือข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ไม่พบผู้ใช้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [User Management]
+      summary: ลบผู้ใช้ตาม ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: ไม่สามารถลบได้เนื่องจากมีข้อมูลสัมพันธ์หรือพยายามลบตัวเอง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ไม่พบผู้ใช้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/categories:
+    get:
+      tags: [Menu]
+      summary: ดึงหมวดหมู่เมนูทั้งหมดหรือเฉพาะที่เปิดใช้งาน
+      parameters:
+        - in: query
+          name: activeOnly
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: รายการหมวดหมู่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MenuCategory'
+    post:
+      tags: [Menu]
+      summary: สร้างหมวดหมู่เมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                display_order:
+                  type: integer
+                is_active:
+                  type: boolean
+      responses:
+        '201':
+          description: สร้างหมวดหมู่สำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuCategory'
+                  message:
+                    type: string
+        '400':
+          description: ชื่อหมวดหมู่หายไป
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/categories/{id}:
+    get:
+      tags: [Menu]
+      summary: ดึงรายละเอียดหมวดหมู่เมนู
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ข้อมูลหมวดหมู่
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuCategory'
+        '404':
+          description: ไม่พบหมวดหมู่
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Menu]
+      summary: แก้ไขหมวดหมู่เมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                display_order:
+                  type: integer
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuCategory'
+                  message:
+                    type: string
+    delete:
+      tags: [Menu]
+      summary: ลบหมวดหมู่เมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: มีเมนูอยู่ในหมวดหมู่ ไม่สามารถลบได้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/items:
+    get:
+      tags: [Menu]
+      summary: ดึงรายการอาหารพร้อมกรองและแบ่งหน้า
+      parameters:
+        - in: query
+          name: categoryId
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: isAvailable
+          schema:
+            type: boolean
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: รายการอาหาร
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuItemList'
+    post:
+      tags: [Menu]
+      summary: เพิ่มเมนูใหม่ (Staff/Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category_id, name, price]
+              properties:
+                category_id:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                price:
+                  type: number
+                  format: float
+                  minimum: 0
+                image_url:
+                  type: string
+                  nullable: true
+                is_available:
+                  type: boolean
+                preparation_time:
+                  type: integer
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+                display_order:
+                  type: integer
+                stock_quantity:
+                  type: integer
+                low_stock_threshold:
+                  type: integer
+      responses:
+        '201':
+          description: เพิ่มเมนูสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuItem'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ครบหรือราคาไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/items/{id}:
+    get:
+      tags: [Menu]
+      summary: ดูรายละเอียดเมนู
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ข้อมูลเมนู
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuItem'
+        '404':
+          description: ไม่พบเมนู
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Menu]
+      summary: แก้ไขเมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                price:
+                  type: number
+                  format: float
+                  minimum: 0
+                image_url:
+                  type: string
+                  nullable: true
+                is_available:
+                  type: boolean
+                preparation_time:
+                  type: integer
+                  nullable: true
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+                display_order:
+                  type: integer
+                stock_quantity:
+                  type: integer
+                low_stock_threshold:
+                  type: integer
+      responses:
+        '200':
+          description: แก้ไขเมนูสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuItem'
+                  message:
+                    type: string
+        '400':
+          description: ราคาไม่ถูกต้องหรือข้อมูลไม่ครบ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Menu]
+      summary: ลบเมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบเมนูสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: มีออเดอร์ที่เกี่ยวข้องอยู่ ไม่สามารถลบได้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/items/{id}/toggle:
+    patch:
+      tags: [Menu]
+      summary: สลับสถานะเปิดขายเมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: สลับสถานะสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MenuItem'
+                  message:
+                    type: string
+        '404':
+          description: ไม่พบเมนู
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/stats:
+    get:
+      tags: [Menu]
+      summary: สถิติเมนู (Staff/Manager)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: ข้อมูลสถิติเมนู
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: ไม่มีสิทธิ์
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/create-order:
+    post:
+      tags: [Menu]
+      summary: สร้างออเดอร์อาหารพร้อมตรวจสต๊อก (Staff/Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id, user_id, table_id, items]
+              properties:
+                booking_id:
+                  type: string
+                user_id:
+                  type: string
+                table_id:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [menu_item_id, quantity]
+                    properties:
+                      menu_item_id:
+                        type: string
+                      quantity:
+                        type: integer
+                        minimum: 1
+                      notes:
+                        type: string
+                        nullable: true
+                special_instructions:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: สร้างออเดอร์สำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/FoodOrder'
+                  message:
+                    type: string
+        '400':
+          description: สต๊อกไม่เพียงพอหรือข้อมูลไม่ครบ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/menu/orders:
+    get:
+      tags: [Menu]
+      summary: ดึงรายการออเดอร์อาหาร (ต้องล็อกอิน)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: userId
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: รายการออเดอร์
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/FoodOrderList'
+  /api/menu/orders/{id}:
+    get:
+      tags: [Menu]
+      summary: ดูรายละเอียดออเดอร์อาหาร
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ข้อมูลออเดอร์
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/FoodOrder'
+        '404':
+          description: ไม่พบออเดอร์
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/pricing:
+    get:
+      tags: [Reservations]
+      summary: ดึงข้อมูลราคา (public endpoint)
+      responses:
+        '200':
+          description: ข้อมูลราคาและโปรโมชั่นที่ใช้ได้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+  /api/reservations/stats:
+    get:
+      tags: [Reservations]
+      summary: สถิติการจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: สถิติการจอง
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: ไม่มีสิทธิ์
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/tables:
+    get:
+      tags: [Reservations]
+      summary: รายการโต๊ะทั้งหมด (ต้องล็อกอิน)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: รายการโต๊ะ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+    post:
+      tags: [Reservations]
+      summary: สร้างโต๊ะใหม่ (Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_number:
+                  type: string
+                capacity:
+                  type: integer
+                category_id:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: สร้างโต๊ะสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/tables/{id}:
+    put:
+      tags: [Reservations]
+      summary: แก้ไขข้อมูลโต๊ะ (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Reservations]
+      summary: ลบโต๊ะ (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: ลบไม่สำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/available-tables:
+    post:
+      tags: [Reservations]
+      summary: ตรวจสอบโต๊ะว่างตามช่วงเวลา
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, start_time, end_time]
+              properties:
+                date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+                exclude_booking_id:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: รายการโต๊ะว่าง
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: ไม่ส่งวันที่หรือเวลา
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/categories:
+    get:
+      tags: [Reservations]
+      summary: ดึงหมวดห้อง/โซนทั้งหมด (Manager)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: รายการหมวดหมู่โต๊ะ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+    post:
+      tags: [Reservations]
+      summary: สร้างหมวดโต๊ะ (Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: สร้างสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+    put:
+      tags: [Reservations]
+      summary: แก้ไขหมวดโต๊ะ (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties: true
+    delete:
+      tags: [Reservations]
+      summary: ลบหมวดโต๊ะ (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /api/reservations/validate-promotion:
+    post:
+      tags: [Reservations]
+      summary: ตรวจสอบโค้ดโปรโมชั่น
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                user_id:
+                  type: string
+                  nullable: true
+                booking_id:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: โปรโมชั่นใช้ได้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Promotion'
+                  message:
+                    type: string
+        '400':
+          description: โค้ดไม่ถูกต้องหรือไม่มีสิทธิ์ใช้
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/promotions:
+    post:
+      tags: [Reservations]
+      summary: สร้างโปรโมชั่นใหม่ (Staff/Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Promotion'
+      responses:
+        '201':
+          description: สร้างโปรโมชั่นสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Promotion'
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations:
+    get:
+      tags: [Reservations]
+      summary: ดึงรายการการจองทั้งหมด (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: date
+          schema:
+            type: string
+        - in: query
+          name: tableId
+          schema:
+            type: string
+        - in: query
+          name: userId
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: รายการการจอง
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ReservationList'
+    post:
+      tags: [Reservations]
+      summary: สร้างการจองใหม่
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, table_id, booking_date, start_time, end_time]
+              properties:
+                user_id:
+                  type: string
+                table_id:
+                  type: string
+                booking_date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+                number_of_people:
+                  type: integer
+                  nullable: true
+                special_requests:
+                  type: string
+                  nullable: true
+                promotion_id:
+                  type: string
+                  nullable: true
+                payment_type:
+                  type: string
+                  enum: [advance, walk_in]
+                total_amount:
+                  type: number
+                  format: float
+                  nullable: true
+      responses:
+        '201':
+          description: สร้างการจองสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  payment_placeholder:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  message:
+                    type: string
+        '400':
+          description: โต๊ะไม่ว่างหรือข้อมูลไม่ครบ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/my:
+    get:
+      tags: [Reservations]
+      summary: ดึงการจองของผู้ใช้ปัจจุบัน
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: upcomingOnly
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: รายการการจองของผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/ReservationList'
+  /api/reservations/{id}:
+    get:
+      tags: [Reservations]
+      summary: ดูรายละเอียดการจอง
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ข้อมูลการจอง
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+        '404':
+          description: ไม่พบการจอง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Reservations]
+      summary: แก้ไขรายละเอียดการจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_id:
+                  type: string
+                booking_date:
+                  type: string
+                  format: date
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+                special_requests:
+                  type: string
+                  nullable: true
+                promotion_id:
+                  type: string
+                  nullable: true
+                total_amount:
+                  type: number
+                  format: float
+      responses:
+        '200':
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+        '400':
+          description: โต๊ะไม่ว่างหรือข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Reservations]
+      summary: อัปเดตสถานะการจอง (ใช้งานร่วมกับ path ย่อย approve/reject/...)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: อัปเดตสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+        '500':
+          description: มีข้อผิดพลาดในการอัปเดตสถานะ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/reservations/{id}/approve:
+    patch:
+      tags: [Reservations]
+      summary: อนุมัติการจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: อนุมัติสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+  /api/reservations/{id}/reject:
+    patch:
+      tags: [Reservations]
+      summary: ปฏิเสธการจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: ปฏิเสธสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+  /api/reservations/{id}/check-in:
+    patch:
+      tags: [Reservations]
+      summary: เช็กอินการจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: เช็กอินสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+  /api/reservations/{id}/check-out:
+    patch:
+      tags: [Reservations]
+      summary: เช็กเอาต์การจอง (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: เช็กเอาต์สำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+  /api/reservations/{id}/cancel:
+    patch:
+      tags: [Reservations]
+      summary: ยกเลิกการจอง (ผู้ใช้หรือพนักงาน)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ยกเลิกสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+  /api/reservations/{id}/pay-deposit:
+    post:
+      tags: [Reservations]
+      summary: ตัดยอดมัดจำ 10% (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ชำระมัดจำสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /api/reservations/{id}/pay-remaining:
+    post:
+      tags: [Reservations]
+      summary: ชำระยอดที่เหลือ 90% (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ชำระยอดที่เหลือสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /api/reservations/{id}/pay-full:
+    post:
+      tags: [Reservations]
+      summary: ชำระเต็มจำนวน (Walk-in)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ชำระเต็มจำนวนสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /api/payments:
+    get:
+      tags: [Payments]
+      summary: ดึงรายการชำระเงินทั้งหมด (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: paymentType
+          schema:
+            type: string
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: รายการชำระเงิน
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentList'
+    post:
+      tags: [Payments]
+      summary: อัปโหลดสลิปการชำระเงินของผู้ใช้
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id, payment_type, amount]
+              properties:
+                booking_id:
+                  type: string
+                payment_type:
+                  type: string
+                  enum: [deposit, remaining, full_payment]
+                amount:
+                  type: number
+                  format: float
+                payment_method:
+                  type: string
+                  nullable: true
+                slip_image_url:
+                  type: string
+                  nullable: true
+                transaction_ref:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: อัปโหลดสลิปสำเร็จ รอการตรวจสอบ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Payment'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ครบหรือชำระให้การจองของคนอื่น
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/payments/stats:
+    get:
+      tags: [Payments]
+      summary: สถิติการชำระเงิน (Staff/Manager)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: สถิติการชำระเงิน
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentStats'
+  /api/payments/my:
+    get:
+      tags: [Payments]
+      summary: รายการชำระเงินของผู้ใช้ปัจจุบัน
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: รายการชำระเงินของผู้ใช้
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentList'
+  /api/payments/{id}:
+    patch:
+      tags: [Payments]
+      summary: แก้ไขสลิปการชำระเงิน (ผู้ใช้เจ้าของสลิป)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id, slip_image_url]
+              properties:
+                booking_id:
+                  type: string
+                amount:
+                  type: number
+                  format: float
+                payment_method:
+                  type: string
+                  nullable: true
+                slip_image_url:
+                  type: string
+                transaction_ref:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: อัปเดตสลิปสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Payment'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ครบหรือไม่สามารถแก้ไขสลิปที่ยืนยันแล้ว
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/payments/{id}/verify:
+    patch:
+      tags: [Payments]
+      summary: ตรวจสอบและยืนยันการชำระเงิน (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ยืนยันสลิปสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Payment'
+                  message:
+                    type: string
+  /api/payments/{id}/reject:
+    patch:
+      tags: [Payments]
+      summary: ปฏิเสธสลิปการชำระเงิน (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: ปฏิเสธสลิปสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Payment'
+                  message:
+                    type: string
+  /api/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: ข้อมูลสรุปสำหรับแดชบอร์ด (Staff/Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [today, week, month]
+          description: ค่าเริ่มต้นเป็น `today`
+      responses:
+        '200':
+          description: สถิติสำหรับแดชบอร์ด
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DashboardStats'
+        '400':
+          description: period ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/boardgames:
+    get:
+      tags: [Boardgames]
+      summary: รายการบอร์ดเกมทั้งหมด (ค้นหา/แบ่งหน้าได้)
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: isTrending
+          schema:
+            type: boolean
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: รายการบอร์ดเกม
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Boardgame'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+    post:
+      tags: [Boardgames]
+      summary: เพิ่มบอร์ดเกม (เฉพาะ Manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                minPlayers:
+                  type: integer
+                  nullable: true
+                maxPlayers:
+                  type: integer
+                  nullable: true
+                playtimeMinutes:
+                  type: integer
+                  nullable: true
+                complexity:
+                  type: string
+                  enum: [easy, medium, hard]
+                  nullable: true
+                imageUrl:
+                  type: string
+                  nullable: true
+                category:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  enum: [available, unavailable, maintenance]
+                availableQuantity:
+                  type: integer
+                  nullable: true
+                isTrending:
+                  type: boolean
+      responses:
+        '201':
+          description: เพิ่มบอร์ดเกมสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Boardgame'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/boardgames/{id}:
+    patch:
+      tags: [Boardgames]
+      summary: แก้ไขข้อมูลบอร์ดเกม (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                minPlayers:
+                  type: integer
+                  nullable: true
+                maxPlayers:
+                  type: integer
+                  nullable: true
+                playtimeMinutes:
+                  type: integer
+                  nullable: true
+                complexity:
+                  type: string
+                  enum: [easy, medium, hard]
+                  nullable: true
+                imageUrl:
+                  type: string
+                  nullable: true
+                category:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  enum: [available, unavailable, maintenance]
+                availableQuantity:
+                  type: integer
+                  nullable: true
+                isTrending:
+                  type: boolean
+      responses:
+        '200':
+          description: แก้ไขบอร์ดเกมสำเร็จ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Boardgame'
+                  message:
+                    type: string
+        '400':
+          description: ข้อมูลไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ไม่พบบอร์ดเกม
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Boardgames]
+      summary: ลบบอร์ดเกม (Manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ลบบอร์ดเกมสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: ไม่พบบอร์ดเกม
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

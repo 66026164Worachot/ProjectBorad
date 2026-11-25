@@ -1,0 +1,4 @@
+id,code,name,description,price_per_hour,is_active,created_at,updated_at
+9b6640cb-64c8-476a-9620-2969d62c3200,S,Small Room,For 1-2 guests,120.00,true,2025-10-31 08:30:50.027403+00,2025-10-31 08:30:50.027403+00
+ab0f42b5-b8e2-4327-994d-cfa99624e706,L,Large Room,For 5-6 guests,240.00,true,2025-10-31 08:30:50.027403+00,2025-10-31 08:30:50.027403+00
+e32273c8-9ee4-4ce1-9c82-ca6497a8ebc6,M,Medium Room,For 3-4 guests,180.00,true,2025-10-31 08:30:50.027403+00,2025-10-31 08:30:50.027403+00
