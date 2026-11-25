@@ -28,6 +28,7 @@ import {
 import { format } from "date-fns";
 import { reservationAPI } from "../../services/reservationAPI";
 import { auth } from "../../utils/auth";
+import WalletConnection from "../../components/WalletConnection";
 import {
   calculateRoomPrice,
   formatCategoryPricing,
@@ -547,6 +548,7 @@ function Reservation() {
       }}
     >
       <MuiContainer maxWidth="xl" sx={{ position: "relative", zIndex: 1 }}>
+        <WalletConnection />
         {/* Header Section */}
         <Box sx={{ textAlign: "center", mb: { xs: 3, sm: 4, md: 5 }, px: { xs: 2, sm: 0 } }}>
           <Typography

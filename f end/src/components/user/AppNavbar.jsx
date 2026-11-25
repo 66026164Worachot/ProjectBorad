@@ -52,6 +52,7 @@ const AppNavbar = () => {
   const navItems = [
     { path: "/user/home", label: "Home", icon: House },
     { path: "/user/reservation", label: "Reservation", icon: CalendarCheck },
+    { path: "/user/chain-reservation", label: "Sepolia Test", icon: CalendarCheck },
     { path: "/user/foodmenu", label: "Food Menu", icon: UtensilsCrossed },
     { path: "/user/slip", label: "Payment Slip", icon: Receipt },
     { path: "/user/boardgame", label: "Board Game", icon: Gamepad2 },

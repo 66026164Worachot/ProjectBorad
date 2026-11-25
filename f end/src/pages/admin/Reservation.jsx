@@ -1,13 +1,18 @@
 // pages/Reservation.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import {
+import WalletConnection from "../../components/WalletConnection";
+import SepoliaSetup, { getSepoliaContractAddress } from "../../components/SepoliaSetup";
+import { BrowserProvider, Contract, formatEther, isAddress, id as hashText } from 'ethers';
+import ChainReservation from '../user/ChainReservation';
+import contractAbi from '../../contracts/BoardgameBooking.abi.json';
+import { 
   Box, Typography, Button, Card, CardContent, IconButton,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Dialog, DialogTitle, DialogContent, DialogActions,
   MenuItem, Select, FormControl, InputLabel, Alert, Snackbar,
   TablePagination, CircularProgress, Breadcrumbs, Link, Tooltip,
   InputAdornment, Grid, Chip, Avatar, TextField, Tabs, Tab,
-  Autocomplete, Divider, Switch, FormControlLabel
+  Autocomplete, Divider, Switch, FormControlLabel, Radio, RadioGroup
 } from '@mui/material';
 import {
   Add, Search as SearchIcon, Refresh, CheckCircle, Cancel,
@@ -56,6 +61,15 @@ const Reservation = () => {
   // State management
   const [activeTab, setActiveTab] = useState(0);
   const [bookings, setBookings] = useState([]);
+  const [chainBookings, setChainBookings] = useState([]);
+  const [chainError, setChainError] = useState('');
+  const [chainAccount, setChainAccount] = useState('');
+  const [chainIsStaff, setChainIsStaff] = useState(false);
+  const [chainCheckInEarly, setChainCheckInEarly] = useState(0);
+  const [chainBusy, setChainBusy] = useState(false);
+  const [chainDetails, setChainDetails] = useState(null);
+  const [chainCancel, setChainCancel] = useState(null);
+  const [chainCancelReason, setChainCancelReason] = useState('');
   const [tables, setTables] = useState([]);
   const [availableTables, setAvailableTables] = useState([]);
   const [users, setUsers] = useState([]);
@@ -73,6 +87,7 @@ const Reservation = () => {
   
   // Dialog states
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
+  const [paymentCurrency, setPaymentCurrency] = useState('thb');
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [openRejectDialog, setOpenRejectDialog] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -240,6 +255,78 @@ const Reservation = () => {
   const currentUser = auth.getUserInfo();
   const canManage = ['staff', 'manager'].includes(currentUser?.role);
   const isManager = currentUser?.role === 'manager';
+  const fetchChainBookings = useCallback(async () => {
+    const address = getSepoliaContractAddress();
+    if (!isAddress(address) || !window.ethereum) { setChainBookings([]); setChainAccount(''); setChainIsStaff(false); return; }
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      if ((await provider.getNetwork()).chainId !== 11155111n) throw new Error('กรุณาเปลี่ยนกระเป๋าเป็นเครือข่าย Sepolia เพื่อดูการจอง ETH');
+      const contract = new Contract(address, contractAbi, provider);
+      setChainCheckInEarly(Number(await contract.checkInEarly()));
+      const accounts = await provider.send('eth_accounts', []);
+      setChainAccount(accounts[0] || '');
+      setChainIsStaff(accounts.length > 0 && await contract.isStaff(accounts[0]));
+      const count = await contract.bookingCount();
+      const start = count > 100n ? count - 99n : 1n;
+      const ids = [];
+      for (let id = count; id >= start; id--) ids.push(id);
+      const rows = await Promise.all(ids.map(async (id) => {
+        const booking = await contract.getBooking(id);
+        const [table, policy] = await Promise.all([contract.getTable(booking.tableId), contract.getPolicy(booking.policyId)]);
+        return { id: id.toString(), booking, table, policy };
+      }));
+      setChainBookings(rows);
+      setChainError('');
+    } catch (error) {
+      setChainBookings([]);
+      setChainAccount('');
+      setChainIsStaff(false);
+      setChainError(error.shortMessage || error.message || 'ไม่สามารถโหลดการจองจาก Sepolia');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchChainBookings();
+    const update = () => fetchChainBookings();
+    window.addEventListener('chain-bookings-updated', update);
+    window.ethereum?.on?.('chainChanged', update);
+    window.ethereum?.on?.('accountsChanged', update);
+    return () => {
+      window.removeEventListener('chain-bookings-updated', update);
+      window.ethereum?.removeListener?.('chainChanged', update);
+      window.ethereum?.removeListener?.('accountsChanged', update);
+    };
+  }, [fetchChainBookings]);
+  const runChainAction = async (method, bookingId, reason) => {
+    setChainBusy(true);
+    try {
+      if (!window.ethereum || !isAddress(getSepoliaContractAddress())) throw new Error('กรุณาเชื่อมกระเป๋าและตั้งค่า Smart Contract');
+      const provider = new BrowserProvider(window.ethereum);
+      if ((await provider.getNetwork()).chainId !== 11155111n) throw new Error('กรุณาเปลี่ยนกระเป๋าเป็นเครือข่าย Sepolia');
+      const signer = await provider.getSigner();
+      const contract = new Contract(getSepoliaContractAddress(), contractAbi, signer);
+      const tx = method === 'shopCancel' ? await contract.shopCancel(bookingId, hashText(reason)) : await contract[method](bookingId);
+      showSnackbar('ส่งธุรกรรมแล้ว กำลังรอยืนยันบน Sepolia', 'info');
+      await tx.wait();
+      await fetchChainBookings();
+      window.dispatchEvent(new Event('chain-bookings-updated'));
+      setChainCancel(null);
+      setChainCancelReason('');
+      showSnackbar('ธุรกรรมยืนยันแล้ว สถานะอัปเดตแล้ว', 'success');
+    } catch (error) {
+      const detail = error.reason || error.shortMessage || error.message || 'ทำรายการไม่สำเร็จ';
+      const row = chainBookings.find(item => item.id === String(bookingId));
+      if (detail.includes('Not in check-in window') && row) {
+        const format = (seconds) => new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(new Date(seconds * 1000));
+        const start = Number(row.booking.startTime);
+        showSnackbar(`เช็กอินได้ตั้งแต่ ${format(start - chainCheckInEarly)} ถึง ${format(start + Number(row.policy.noShowGrace))} น.`, 'warning');
+      } else if (detail.includes('Cannot mark no-show')) {
+        showSnackbar('ยังทำเครื่องหมายไม่มาใช้บริการไม่ได้ ต้องรอพ้นช่วงผ่อนผันหลังเวลาเริ่ม', 'warning');
+      } else {
+        showSnackbar(detail, 'error');
+      }
+    } finally { setChainBusy(false); }
+  };
   const tableStatusOptions = ['available', 'occupied', 'maintenance', 'reserved', 'disabled'];
 
   const getTableCapacityDisplay = (table) => {
@@ -984,6 +1071,7 @@ const Reservation = () => {
   };
 
   const handleOpenCreateDialog = () => {
+    setPaymentCurrency('thb');
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const currentHour = now.getHours();
@@ -1014,6 +1102,10 @@ const Reservation = () => {
 
   const handleCreateBooking = async () => {
     try {
+      if (paymentCurrency !== 'thb') {
+        showSnackbar('การจองด้วย ETH ยังไม่พร้อมใช้งาน', 'warning');
+        return;
+      }
       if (!createForm.user_id || !createForm.table_id || !createForm.booking_date ||
           !createForm.start_time || !createForm.end_time) {
         showSnackbar('Please fill in all required fields', 'warning');
@@ -1245,10 +1337,21 @@ const Reservation = () => {
 
   // ⭐ ใช้ sortBookings() กับ bookings ก่อนแสดงผล
   const sortedBookings = sortBookings(bookings);
+  const chainStatusLabels = ['pending', 'confirmed', 'checked in', 'completed', 'cancelled', 'expired', 'no-show', 'disputed'];
+  const chainStatusFilters = ['waiting', 'approved', 'checked_in', 'checked_out', 'cancelled', 'expired', 'no_show', 'disputed'];
+  const filteredChainBookings = page === 0 ? chainBookings.filter(({ booking, table }) => {
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Number(booking.startTime) * 1000));
+    const term = searchQuery.trim().toLowerCase();
+    return (statusFilter === 'all' || statusFilter === chainStatusFilters[Number(booking.status)]) &&
+      (!dateFilter || date === dateFilter) && tableFilter === 'all' &&
+      (!term || booking.customer.toLowerCase().includes(term) || table.name.toLowerCase().includes(term));
+  }) : [];
 
   return (
     <Box sx={{ p: { xs: 2, sm: 4, md: 6 }, minHeight: '100vh' }}>
       <Box sx={{ maxWidth: 1600, mx: 'auto' }}>
+        <WalletConnection />
+        <SepoliaSetup />
         
         {/* Breadcrumb */}
         <Box display="flex" alignItems="center" mb={3}>
@@ -1416,12 +1519,15 @@ const Reservation = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={12} md={1}>
-                  <Button fullWidth variant="outlined" startIcon={<Refresh />} onClick={fetchBookings} sx={{ height: '56px' }}>
+                  <Button fullWidth variant="outlined" startIcon={<Refresh />} onClick={() => { fetchBookings(); fetchChainBookings(); }} sx={{ height: '56px' }}>
                     Refresh
                   </Button>
                 </Grid>
               </Grid>
             </Card>
+
+            {chainError && <Alert severity="warning" sx={{ mb: 2 }}>{chainError}</Alert>}
+            {chainBookings.length > 0 && <Alert severity="info" sx={{ mb: 2 }}>รายการ Sepolia แสดงจาก Smart Contract ในหน้าแรก (สูงสุด 100 รายการล่าสุด) ส่วนตัวนับและการแบ่งหน้าใช้กับรายการเงินบาท</Alert>}
 
             <TableContainer component={Paper}>
               <Table>
@@ -1438,13 +1544,39 @@ const Reservation = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
+                  {!loading && filteredChainBookings.map(({ id, booking, table, policy }) => {
+                    const status = Number(booking.status);
+                    const start = new Date(Number(booking.startTime) * 1000);
+                    const end = new Date((Number(booking.startTime) + Number(booking.hoursBooked) * 3600) * 1000);
+                    const options = { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false };
+                    const payment = status === 0 ? 'รอจ่ายมัดจำ' : status === 1 || status === 2 ? 'จ่ายมัดจำแล้ว' : status === 3 ? 'เสร็จสิ้น / ตัดสินแล้ว' : 'ดูสถานะบนเชน';
+                    return <TableRow key={`chain-${id}`} hover sx={{ bgcolor: '#f5faff' }}>
+                      <TableCell><Typography fontWeight="500">{booking.customer.slice(0, 8)}…{booking.customer.slice(-6)}</Typography><Typography variant="caption" color="text.secondary">Sepolia · #{id}</Typography></TableCell>
+                      <TableCell><Chip label={table.name} size="small" variant="outlined" /></TableCell>
+                      <TableCell>{new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short' }).format(start)}</TableCell>
+                      <TableCell>{new Intl.DateTimeFormat('th-TH', options).format(start)} - {new Intl.DateTimeFormat('th-TH', options).format(end)}</TableCell>
+                      <TableCell><Chip label={chainStatusLabels[status] || 'unknown'} size="small" color={status === 1 || status === 2 ? 'success' : 'default'} /></TableCell>
+                      <TableCell><Chip label={payment} size="small" color={status === 1 || status === 2 ? 'info' : 'default'} /></TableCell>
+                      <TableCell><Typography fontWeight="600">{formatEther(booking.totalPrice)} ETH</Typography><Typography variant="caption" color="text.secondary">มัดจำ {formatEther(booking.depositAmount)} ETH</Typography></TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="ดูรายละเอียดการจอง Sepolia"><IconButton size="small" onClick={() => setChainDetails({ id, booking, table })}><Visibility fontSize="small" /></IconButton></Tooltip>
+                        {status === 0 && <Tooltip title="ปล่อยการจองที่หมดเวลาจ่ายมัดจำ"><span><IconButton size="small" color="warning" disabled={chainBusy || !chainAccount} onClick={() => runChainAction('expireBooking', id)}><Event fontSize="small" /></IconButton></span></Tooltip>}
+                        {status === 1 && <>
+                          <Tooltip title={chainAccount.toLowerCase() === booking.customer.toLowerCase() ? 'กระเป๋าผู้จองจัดการรายการของตัวเองไม่ได้ กรุณาสลับเป็นกระเป๋า Staff หรือ Owner อีกใบ' : !chainIsStaff ? 'กระเป๋านี้ยังไม่มีสิทธิ์ Staff หรือ Owner บนสัญญา' : `เช็กอินได้ตั้งแต่ ${new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(new Date((Number(booking.startTime) - chainCheckInEarly) * 1000))} ถึง ${new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'short', timeStyle: 'short' }).format(new Date((Number(booking.startTime) + Number(policy.noShowGrace)) * 1000))} น.`}><span><IconButton size="small" color="primary" disabled={chainBusy || !chainIsStaff || chainAccount.toLowerCase() === booking.customer.toLowerCase()} onClick={() => runChainAction('checkIn', id)}><Login fontSize="small" /></IconButton></span></Tooltip>
+                          <Tooltip title="ทำเครื่องหมายไม่มาใช้บริการ (หลังช่วงผ่อนผัน)"><span><IconButton size="small" color="warning" disabled={chainBusy || !chainIsStaff || chainAccount.toLowerCase() === booking.customer.toLowerCase()} onClick={() => runChainAction('markNoShow', id)}><Block fontSize="small" /></IconButton></span></Tooltip>
+                          <Tooltip title="ร้านยกเลิกและคืนมัดจำเต็มจำนวน"><span><IconButton size="small" color="error" disabled={chainBusy || !chainIsStaff || chainAccount.toLowerCase() === booking.customer.toLowerCase()} onClick={() => { setChainCancel({ id, booking }); setChainCancelReason(''); }}><Cancel fontSize="small" /></IconButton></span></Tooltip>
+                        </>}
+                        {status === 2 && <Tooltip title="ลูกค้าต้องจ่ายยอดคงเหลือด้วยกระเป๋าของตนเอง"><Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>รอลูกค้าจ่าย</Typography></Tooltip>}
+                      </TableCell>
+                    </TableRow>;
+                  })}
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
                         <CircularProgress />
                       </TableCell>
                     </TableRow>
-                  ) : sortedBookings.length === 0 ? (
+                  ) : sortedBookings.length === 0 && filteredChainBookings.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
                         <Typography color="text.secondary">No bookings found</Typography>
@@ -1886,11 +2018,61 @@ const Reservation = () => {
           </>
         )}
 
+        <Dialog open={Boolean(chainDetails)} onClose={() => setChainDetails(null)} maxWidth="sm" fullWidth>
+          <DialogTitle>รายละเอียดการจอง Sepolia</DialogTitle>
+          <DialogContent>
+            {chainDetails && <Box sx={{ display: 'grid', gap: 1, pt: 1, overflowWrap: 'anywhere' }}>
+              <Typography>การจอง #{chainDetails.id} · {chainStatusLabels[Number(chainDetails.booking.status)]}</Typography>
+              <Typography>กระเป๋าผู้จอง: {chainDetails.booking.customer}</Typography>
+              <Typography>โต๊ะ: {chainDetails.table.name}</Typography>
+              <Typography>ราคารวม: {formatEther(chainDetails.booking.totalPrice)} ETH</Typography>
+              <Typography>มัดจำที่กำหนด: {formatEther(chainDetails.booking.depositAmount)} ETH</Typography>
+              <Typography>จำนวนคน: {String(chainDetails.booking.guests)}</Typography>
+            </Box>}
+          </DialogContent>
+          <DialogActions><Button onClick={() => setChainDetails(null)}>ปิด</Button></DialogActions>
+        </Dialog>
+
+        <Dialog open={Boolean(chainCancel)} onClose={() => !chainBusy && setChainCancel(null)} maxWidth="sm" fullWidth>
+          <DialogTitle>ร้านยกเลิกการจอง Sepolia</DialogTitle>
+          <DialogContent>
+            <Alert severity="warning" sx={{ my: 2 }}>การยกเลิกโดยร้านจะจัดสรรมัดจำคืนลูกค้าเต็มจำนวน ลูกค้าต้องกดรับเงินคืนด้วยกระเป๋าของตนเอง</Alert>
+            <TextField fullWidth label="เหตุผลการยกเลิก" value={chainCancelReason} onChange={(event) => setChainCancelReason(event.target.value)} helperText="บนเชนเก็บเฉพาะ hash ของเหตุผล ไม่เก็บข้อความ" />
+          </DialogContent>
+          <DialogActions>
+            <Button disabled={chainBusy} onClick={() => setChainCancel(null)}>กลับ</Button>
+            <Button color="error" variant="contained" disabled={chainBusy || !chainCancelReason.trim()} onClick={() => runChainAction('shopCancel', chainCancel.id, chainCancelReason.trim())}>ยืนยันในกระเป๋า</Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Create Dialog */}
         <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} maxWidth="md" fullWidth>
           <DialogTitle>Create New Booking</DialogTitle>
           <DialogContent>
             <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <FormControl component="fieldset">
+                <Typography variant="subtitle2" fontWeight="600" mb={1}>
+                  สกุลเงินที่ต้องการชำระ *
+                </Typography>
+                <RadioGroup
+                  row
+                  name="booking-currency"
+                  value={paymentCurrency}
+                  onChange={(event) => setPaymentCurrency(event.target.value)}
+                >
+                  <FormControlLabel value="thb" control={<Radio />} label="เงินบาท (THB)" />
+                  <FormControlLabel value="eth" control={<Radio />} label="ETH บน Sepolia (ทดสอบ)" />
+                </RadioGroup>
+                {paymentCurrency === 'eth' && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    {isAddress(getSepoliaContractAddress())
+                      ? 'สร้างการจองทดลองด้านล่างด้วยกระเป๋าที่เชื่อมอยู่ การจองทดสอบแยกจากรายการในระบบเดิม'
+                      : 'ต้อง deploy Smart Contract และเพิ่มโต๊ะทดสอบก่อน ปิดหน้าต่างนี้แล้วใช้ส่วนตั้งค่าด้านบน'}
+                  </Alert>
+                )}
+              </FormControl>
+
+              {paymentCurrency === 'thb' && <>
               {activeRoomCategories.length > 0 && (
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -2016,6 +2198,11 @@ const Reservation = () => {
 
               <Divider />
 
+              </>}
+
+              {paymentCurrency === 'eth' && isAddress(getSepoliaContractAddress()) && <ChainReservation embedded />}
+
+              {paymentCurrency === 'thb' && <>
               <Box>
                 <Typography variant="subtitle2" fontWeight="600" mb={1}>
                   Payment Type *
@@ -2212,11 +2399,13 @@ const Reservation = () => {
                 </Grid>
               </Box>
 
+              </>}
+
             </Box>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setOpenCreateDialog(false)}>Cancel</Button>
-            <Button variant="contained" onClick={handleCreateBooking}>Create Booking</Button>
+            {paymentCurrency === 'thb' && <Button variant="contained" onClick={handleCreateBooking}>Create Booking</Button>}
           </DialogActions>
         </Dialog>
 

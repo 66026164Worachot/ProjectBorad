@@ -15,6 +15,7 @@ import apiReservationRoutes from './routes/apiReservationRoutes.js';
 import apiDashboardRoutes from './routes/apiDashboardRoutes.js';
 import apiPaymentRoutes from './routes/apiPaymentRoutes.js';
 import apiBoardgameRoutes from './routes/apiBoardgameRoutes.js';
+import apiWalletRoutes from './routes/apiWalletRoutes.js';
 
 
 import path from 'path';
@@ -105,6 +106,7 @@ app.use('/api/reservations', apiReservationRoutes);
 app.use('/api/dashboard', apiDashboardRoutes);
 app.use('/api/payments', apiPaymentRoutes);
 app.use('/api/boardgames', apiBoardgameRoutes);
+app.use('/api/wallet', apiWalletRoutes);
 
 // Global error handler (รวมการจัดการ CORS error)
 app.use((err, req, res, next) => {

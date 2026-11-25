@@ -37,6 +37,7 @@ import UserFoodMenu from "./pages/user/FoodMenu";
 import UserSlip from "./pages/user/Slip";
 import UserSetting from "./pages/user/Setting";
 import UserBoardgame from "./pages/user/Boardgame";
+import ChainReservation from "./pages/user/ChainReservation";
 
 const theme = createTheme({
   typography: {
@@ -93,6 +94,7 @@ function AppContent() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="reservation" element={<Reservation />} />
+              <Route path="chain-reservation" element={<ChainReservation />} />
               <Route path="foodmenu" element={<FoodMenu />} />
               <Route path="slip" element={<Slip />} />
               <Route path="boardgame" element={<Boardgame />} />
@@ -113,6 +115,7 @@ function AppContent() {
               <Route index element={<Navigate to="home" replace />} />
               <Route path="home" element={<UserHome />} />
               <Route path="reservation" element={<UserReservation />} />
+              <Route path="chain-reservation" element={<ChainReservation />} />
               <Route path="foodmenu" element={<UserFoodMenu />} />
               <Route path="slip" element={<UserSlip />} />
               <Route path="boardgame" element={<UserBoardgame />} />
